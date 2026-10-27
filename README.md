@@ -1,12 +1,12 @@
 # RepoPilot AI — Your GitHub Repository Assistant
 
-RepoPilot is a local, zero-cost GitHub intelligence toolkit. The current milestone provides a read-only GitHub REST client and a genuine MCP server with repository metadata, file listing, file-content, deterministic issue intelligence, pull-request risk analysis, and GitHub Actions failure investigation. Write actions and the Streamlit dashboard are not implemented yet.
+RepoPilot is a local, zero-cost GitHub intelligence toolkit. The current milestone provides a read-only GitHub REST client, a genuine MCP server, and a local Streamlit dashboard for repository metadata, file listing, deterministic issue intelligence, pull-request risk analysis, and GitHub Actions failure investigation. Write actions are not implemented.
 
 ## Problem statement
 
 Engineers spend time gathering repository context, issues, pull requests, and CI failures by hand. RepoPilot AI will expose that work through a real Model Context Protocol server, deterministic analysis, and a local dashboard — without paid LLM or hosting services.
 
-## Current scope (Milestone 5)
+## Current scope (Milestone 6)
 
 - Project package layout under `src/repopilot`.
 - GitHub REST client with timeouts, validation, pagination and typed errors.
@@ -29,6 +29,9 @@ Engineers spend time gathering repository context, issues, pull requests, and CI
 - GitHub Actions investigation uses the documented workflow, run, job, and job-log
   endpoints. It reports run status, failed jobs and steps, bounded redacted log
   excerpts, deterministic likely-cause signals, and next debugging steps.
+- Local Streamlit dashboard with Overview, Issues, Pull Requests, and GitHub Actions
+  navigation. Dashboard data calls reuse the GitHub client and existing analyzers,
+  with session caching and an explicit refresh control.
 - Offline unit tests with mocked HTTP responses plus an opt-in live call.
 
 ## Prerequisites
@@ -56,6 +59,19 @@ Copy `.env.example` to `.env` only if you want to set `GITHUB_TOKEN`. Do not com
 python -m pytest tests
 python -m repopilot get-repo octocat/Hello-World
 ```
+
+Start the local dashboard from PowerShell:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m streamlit run src/repopilot/dashboard.py
+```
+
+Open the local URL printed by Streamlit, enter an owner and repository, and use the
+sidebar navigation. The dashboard defaults to `octocat/Hello-World` as a convenient
+public example; it does not use sample findings. Streamlit is the only dashboard
+dependency and is free to run locally; its transitive display dependencies are
+installed by `requirements.txt`.
 
 The issue MCP tools accept `state` as `open`, `closed`, or `all`, and cap retrieval with
 `max_issues` to avoid unbounded API requests. `analyze_repository_issues` also accepts
@@ -93,6 +109,11 @@ with repository access; classic personal access tokens require the documented
 `repo` scope, while fine-grained tokens should grant repository metadata and
 Actions read permissions. Public repositories can be queried without a token,
 subject to GitHub's unauthenticated rate limits.
+
+Dashboard authentication options are the same as the client: public repositories
+work without a token, while `GITHUB_TOKEN` in `.env` or the process environment gives
+private-repository access when the token has repository metadata, Issues, Pull
+requests, and Actions read permissions as applicable. Tokens are never displayed.
 
 Start the MCP server over stdio:
 
