@@ -38,4 +38,4 @@ class InvalidPathError(ValueError):
 
 
 class PathNotFoundError(GitHubAPIError):
-    """Raised when a file, directory, or README does not exist.""""""
+    """Raised when a file, directory, or README does not exist."""

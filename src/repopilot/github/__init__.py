@@ -7,11 +7,32 @@ from repopilot.github.errors import (
     PathNotFoundError,
     RepositoryNotFoundError,
 )
-from repopilot.github.models import FileContent, FileListing, RepositoryInfo
+from repopilot.github.models import (
+    FileContent,
+    FileListing,
+    IssueInfo,
+    IssueListing,
+    PullRequestFile,
+    PullRequestInfo,
+    PullRequestListing,
+    RepositoryInfo,
+    WorkflowInfo,
+    WorkflowJob,
+    WorkflowLogExcerpt,
+    WorkflowRunInfo,
+    WorkflowRunListing,
+    WorkflowStep,
+    WorkflowListing,
+)
 
 __all__ = [
     "FileContent",
     "FileListing",
+    "IssueInfo",
+    "IssueListing",
+    "PullRequestFile",
+    "PullRequestInfo",
+    "PullRequestListing",
     "GitHubAPIError",
     "GitHubClient",
     "GitHubRateLimitError",
@@ -19,5 +40,12 @@ __all__ = [
     "InvalidRepositoryError",
     "PathNotFoundError",
     "RepositoryInfo",
+    "WorkflowInfo",
+    "WorkflowJob",
+    "WorkflowListing",
+    "WorkflowLogExcerpt",
+    "WorkflowRunInfo",
+    "WorkflowRunListing",
+    "WorkflowStep",
     "RepositoryNotFoundError",
 ]
