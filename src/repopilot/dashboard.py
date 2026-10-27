@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Callable, TypeVar
 
 from repopilot.actions_analysis import diagnose_workflow_failure
+from repopilot.config import DEFAULT_ISSUES, DEFAULT_PULL_REQUESTS, DEFAULT_WORKFLOW_RUNS, DEFAULT_WORKFLOWS
 from repopilot.github.client import GitHubClient, client_from_settings
-from repopilot.github.validation import parse_repo_ref
+from repopilot.github.validation import validate_owner, validate_repo_name
 from repopilot.issue_analysis import analyze_issues
 from repopilot.pr_analysis import analyze_pull_requests
 
@@ -15,27 +17,56 @@ T = TypeVar("T")
 
 def validate_dashboard_repository(owner: str, repo: str) -> tuple[str, str]:
     """Validate the two dashboard repository fields before any network call."""
-    return parse_repo_ref(f"{owner.strip()}/{repo.strip()}")
+    return validate_owner(owner), validate_repo_name(repo)
 
 
 def fetch_overview(client: GitHubClient, owner: str, repo: str) -> dict[str, Any]:
-    return client.get_repository(owner, repo).to_dict()
+    return {**client.get_repository(owner, repo).to_dict(), "refreshed_at": _now()}
 
 
 def fetch_issue_report(client: GitHubClient, owner: str, repo: str) -> dict[str, Any]:
-    listing = client.list_repository_issues(owner, repo, state="all")
-    return {"listing": listing.to_dict(), "analysis": analyze_issues(listing.issues)}
+    repository = client.get_repository(owner, repo)
+    listing = client.list_repository_issues(owner, repo, state="all", max_issues=DEFAULT_ISSUES)
+    return {
+        "listing": listing.to_dict(),
+        "analysis": analyze_issues(listing.issues),
+        "records_analyzed": len(listing.issues),
+        "configured_maximum": DEFAULT_ISSUES,
+        "sample_truncated": listing.truncated,
+        "repository_open_issues": repository.open_issues,
+        "refreshed_at": _now(),
+    }
 
 
 def fetch_pull_request_report(client: GitHubClient, owner: str, repo: str) -> dict[str, Any]:
-    listing = client.list_repository_pull_requests(owner, repo, state="all")
-    return {"listing": listing.to_dict(), "analysis": analyze_pull_requests(listing.pull_requests)}
+    listing = client.list_repository_pull_requests(
+        owner,
+        repo,
+        state="all",
+        max_pull_requests=DEFAULT_PULL_REQUESTS,
+    )
+    return {
+        "listing": listing.to_dict(),
+        "analysis": analyze_pull_requests(listing.pull_requests),
+        "records_analyzed": len(listing.pull_requests),
+        "configured_maximum": DEFAULT_PULL_REQUESTS,
+        "sample_truncated": listing.truncated,
+        "refreshed_at": _now(),
+    }
 
 
 def fetch_actions_report(client: GitHubClient, owner: str, repo: str) -> dict[str, Any]:
-    workflows = client.list_repository_workflows(owner, repo)
-    runs = client.list_workflow_runs(owner, repo, max_runs=50)
-    return {"workflows": workflows.to_dict(), "runs": runs.to_dict()}
+    workflows = client.list_repository_workflows(owner, repo, max_workflows=DEFAULT_WORKFLOWS)
+    runs = client.list_workflow_runs(owner, repo, max_runs=DEFAULT_WORKFLOW_RUNS)
+    return {
+        "workflows": workflows.to_dict(),
+        "runs": runs.to_dict(),
+        "workflow_records_analyzed": len(workflows.workflows),
+        "run_records_analyzed": len(runs.runs),
+        "workflow_configured_maximum": DEFAULT_WORKFLOWS,
+        "run_configured_maximum": DEFAULT_WORKFLOW_RUNS,
+        "refreshed_at": _now(),
+    }
 
 
 def fetch_failure_report(
@@ -55,7 +86,12 @@ def fetch_failure_report(
         "jobs": [job.to_dict() for job in jobs],
         "logs": [log.to_dict() for log in logs],
         "diagnosis": diagnose_workflow_failure(run, jobs, logs),
+        "refreshed_at": _now(),
     }
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def main() -> None:
@@ -80,6 +116,7 @@ def main() -> None:
         """,
         unsafe_allow_html=True,
     )
+    st.caption("All views are read-only. Data is fetched on demand and cached until Refresh data is pressed.")
 
     if "dashboard_cache" not in st.session_state:
         st.session_state.dashboard_cache = {}
@@ -138,10 +175,11 @@ def _render_overview(st: Any, owner: str, repo: str) -> None:
     except Exception:
         return
     st.subheader("Repository overview")
+    st.caption(f"Last refreshed: {data['refreshed_at']}")
     metrics = st.columns(4)
     metrics[0].metric("Stars", f"{data['stars']:,}")
     metrics[1].metric("Forks", f"{data['forks']:,}")
-    metrics[2].metric("Open issues", f"{data['open_issues']:,}")
+    metrics[2].metric("Open issues (GitHub)", f"{data['open_issues']:,}")
     metrics[3].metric("Primary language", data["primary_language"] or "Not reported")
     st.info(data["description"] or "This repository has no description.")
     left, right = st.columns(2)
@@ -165,22 +203,39 @@ def _render_issues(st: Any, owner: str, repo: str) -> None:
         return
     listing, analysis = report["listing"], report["analysis"]
     st.subheader("Issue intelligence")
+    st.caption(f"Last refreshed: {report['refreshed_at']}")
+    sample_note = f"Analyzed {report['records_analyzed']} records (configured maximum {report['configured_maximum']})."
+    if report["sample_truncated"]:
+        st.warning(sample_note + " This is a limited sample, not a repository-wide issue report.")
+    else:
+        st.caption(sample_note + " Counts below describe the returned ordinary-issue sample.")
+    if report["repository_open_issues"] != analysis["open_count"] or report["sample_truncated"]:
+        st.info(
+            f"GitHub repository metric: {report['repository_open_issues']:,} open issues. "
+            f"Issue analysis sample: {analysis['open_count']:,} open records. These values are not expected to match when the sample is limited."
+        )
     metrics = st.columns(4)
-    metrics[0].metric("Total", analysis["issue_count"])
-    metrics[1].metric("Open", analysis["open_count"])
-    metrics[2].metric("Closed", analysis["closed_count"])
-    metrics[3].metric("Long open", len(analysis["long_open_issue_numbers"]))
+    metrics[0].metric("Analyzed", analysis["issue_count"])
+    metrics[1].metric("Open in sample", analysis["open_count"])
+    metrics[2].metric("Closed in sample", analysis["closed_count"])
+    metrics[3].metric("Stale", len(analysis["stale_issue_numbers"]))
     if listing["issue_count"] == 0:
         st.success("No ordinary issues were returned for this repository.")
         return
     st.markdown("**Categories**")
     st.bar_chart(analysis["category_counts"])
+    if analysis["priority_counts"]:
+        st.caption("Explicit priority labels")
+        st.json(analysis["priority_counts"])
     for recommendation in analysis["recommendations"]:
         with st.expander(f"Recommendation: {recommendation['action']}"):
             st.write(recommendation["reason"])
             if "issue_numbers" in recommendation:
                 st.write("Issues:", ", ".join(f"#{number}" for number in recommendation["issue_numbers"]))
     st.dataframe(analysis["assessments"], hide_index=True, use_container_width=True)
+    if analysis["duplicate_candidates"]:
+        with st.expander(f"Duplicate candidates ({len(analysis['duplicate_candidates'])})"):
+            st.dataframe(analysis["duplicate_candidates"], hide_index=True, use_container_width=True)
     with st.expander("Retrieval details"):
         st.write(f"Excluded pull requests: {listing['excluded_pull_requests']}")
         st.write(f"Evidence: {listing['evidence_url']}")
@@ -193,6 +248,9 @@ def _render_pull_requests(st: Any, owner: str, repo: str) -> None:
         return
     listing, analysis = report["listing"], report["analysis"]
     st.subheader("Pull-request risk review")
+    st.caption(f"Last refreshed: {report['refreshed_at']}")
+    sample_note = f"Analyzed {report['records_analyzed']} records (configured maximum {report['configured_maximum']})."
+    st.warning(sample_note + " Findings describe this returned sample.") if report["sample_truncated"] else st.caption(sample_note)
     st.metric("Pull requests analyzed", listing["pull_request_count"])
     if not listing["pull_request_count"]:
         st.success("No pull requests were returned for this repository.")
@@ -200,7 +258,13 @@ def _render_pull_requests(st: Any, owner: str, repo: str) -> None:
     for assessment in analysis["assessments"]:
         facts = assessment["facts"]
         with st.expander(f"#{assessment['number']} · {assessment['title']}"):
-            st.write(f"{facts['changed_files']} files · +{facts['additions']} / -{facts['deletions']} · {assessment['evidence_url']}")
+            st.write(f"Risk: {assessment['risk_level'].upper()} · Score: {assessment['risk_score']} · {facts['changed_files']} files · +{facts['additions']} / -{facts['deletions']}")
+            st.link_button("Open pull request evidence", assessment["evidence_url"])
+            if facts["sensitive_files"]:
+                st.warning("Sensitive-file indicators: " + ", ".join(facts["sensitive_files"]))
+            st.caption("Test-file signal: " + (", ".join(facts["test_files"]) if facts["test_files"] else "No visible test-file changes"))
+            if assessment["score_breakdown"]:
+                st.dataframe(assessment["score_breakdown"], hide_index=True, use_container_width=True)
             if assessment["limitations"]:
                 st.warning("Limitations: " + " ".join(assessment["limitations"]))
             if not assessment["findings"]:
@@ -225,9 +289,10 @@ def _render_actions(st: Any, owner: str, repo: str) -> None:
         return
     workflows, runs = report["workflows"], report["runs"]
     st.subheader("GitHub Actions")
+    st.caption(f"Last refreshed: {report['refreshed_at']}")
     metrics = st.columns(3)
-    metrics[0].metric("Workflows", workflows["workflow_count"])
-    metrics[1].metric("Recent runs", runs["run_count"])
+    metrics[0].metric("Workflows analyzed", f"{report['workflow_records_analyzed']}/{report['workflow_configured_maximum']}")
+    metrics[1].metric("Runs analyzed", f"{report['run_records_analyzed']}/{report['run_configured_maximum']}")
     metrics[2].metric("Failed runs", sum(item["conclusion"] == "failure" for item in runs["runs"]))
     if not workflows["workflow_count"]:
         st.info("No workflows were reported for this repository.")
@@ -256,6 +321,7 @@ def _render_actions(st: Any, owner: str, repo: str) -> None:
 def _render_failure_detail(st: Any, detail: dict[str, Any]) -> None:
     diagnosis = detail["diagnosis"]
     st.markdown("### Failure investigation")
+    st.caption(f"Last refreshed: {detail['refreshed_at']}")
     if diagnosis["inferred_likely_causes"]:
         for cause in diagnosis["inferred_likely_causes"]:
             st.warning(f"Heuristic: {cause['explanation']}")

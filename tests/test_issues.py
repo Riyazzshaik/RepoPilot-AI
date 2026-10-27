@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from dataclasses import replace
 
 import pytest
 from pytest_httpx import HTTPXMock
@@ -139,3 +140,31 @@ def test_issue_analysis_is_explainable() -> None:
         "review_long_open_issues",
         "group_recurring_theme",
     }
+    assert result["assessments"][0]["age_days"] == 455
+    assert result["assessments"][0]["stale"] is True
+
+
+def test_issue_priority_and_duplicate_candidates() -> None:
+    base = IssueInfo(
+        number=10,
+        title="Crash when importing configuration",
+        body="Import fails during startup",
+        state="open",
+        labels=("priority: high",),
+        html_url="https://github.com/example/repo/issues/10",
+        api_url="https://api.github.com/repos/example/repo/issues/10",
+        author="octocat",
+        comments=0,
+        created_at="2026-03-01T00:00:00Z",
+        updated_at="2026-03-01T00:00:00Z",
+        closed_at=None,
+    )
+    duplicate = replace(base, number=11, html_url="https://github.com/example/repo/issues/11")
+    result = analyze_issues(
+        [base, duplicate],
+        now=datetime(2026, 3, 10, tzinfo=timezone.utc),
+    )
+    assert result["priority_counts"] == {"high": 2}
+    assert result["duplicate_candidates"][0]["issue_numbers"] == [10, 11]
+    assert result["duplicate_candidates"][0]["similarity"] >= 0.82
+    assert "review_explicit_priority" in {item["action"] for item in result["recommendations"]}

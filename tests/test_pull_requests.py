@@ -155,6 +155,14 @@ def test_pull_request_risk_analysis_is_heuristic_and_evidence_backed() -> None:
     )
     result = analyze_pull_requests([pull_request], large_files=20, large_changes=1000, broad_files=20, broad_directories=2)
     assessment = result["assessments"][0]
+    assert assessment["risk_score"] == 8
+    assert assessment["risk_level"] == "high"
+    assert {item["rule"] for item in assessment["score_breakdown"]} == {
+        "large_change",
+        "sensitive_path",
+        "broad_change",
+        "draft_review_readiness",
+    }
     rules = {finding["rule"] for finding in assessment["findings"]}
     assert {"large_change", "sensitive_path", "broad_change", "tests_modified", "draft_review_readiness"} <= rules
     assert assessment["limitations"] == ["One or more patches were missing or truncated; line-level reasoning is incomplete."]

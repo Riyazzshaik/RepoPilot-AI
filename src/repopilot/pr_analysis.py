@@ -102,6 +102,7 @@ def _analyze_one(
     test_files = [item for item in files if _is_test_file(item.filename)]
     directories = sorted({_directory(item.filename) for item in files})
     findings: list[dict[str, Any]] = []
+    score_breakdown: list[dict[str, Any]] = []
     limitations: list[str] = []
 
     if pull_request.changed_files is None or pull_request.additions is None or pull_request.deletions is None:
@@ -114,6 +115,7 @@ def _analyze_one(
         limitations.append("One or more patches were missing or truncated; line-level reasoning is incomplete.")
 
     if total_changes is not None and total_changes >= large_changes or file_count >= large_files:
+        score_breakdown.append({"rule": "large_change", "points": 2, "evidence": "configured size threshold exceeded"})
         findings.append(_finding(
             "medium",
             "large_change",
@@ -122,6 +124,7 @@ def _analyze_one(
             "Split the change or assign additional reviewers and focused tests.",
         ))
     if sensitive_files:
+        score_breakdown.append({"rule": "sensitive_path", "points": 3, "evidence": [item.filename for item in sensitive_files]})
         findings.append(_finding(
             "medium",
             "sensitive_path",
@@ -130,6 +133,7 @@ def _analyze_one(
             "Require an appropriate security or dependency review; this heuristic does not confirm a vulnerability.",
         ))
     if file_count >= broad_files or len(directories) >= broad_directories:
+        score_breakdown.append({"rule": "broad_change", "points": 2, "evidence": {"files": file_count, "directories": len(directories)}})
         findings.append(_finding(
             "medium",
             "broad_change",
@@ -146,6 +150,7 @@ def _analyze_one(
             "Confirm the modified tests cover the production behavior changed by this pull request.",
         ))
     elif files or not pull_request.files_error:
+        score_breakdown.append({"rule": "no_visible_tests", "points": 1, "evidence": "no test path in returned files"})
         findings.append(_finding(
             "low",
             "no_visible_tests",
@@ -154,6 +159,7 @@ def _analyze_one(
             "Ask the author to add or explain tests; absence of a changed test file is not proof of missing coverage.",
         ))
     if pull_request.draft is True:
+        score_breakdown.append({"rule": "draft_review_readiness", "points": 1, "evidence": "GitHub draft=true"})
         findings.append(_finding(
             "low",
             "draft_review_readiness",
@@ -162,11 +168,16 @@ def _analyze_one(
             "Confirm intended review timing and wait for the author to mark it ready when appropriate.",
         ))
 
+    risk_score = sum(item["points"] for item in score_breakdown)
+    risk_level = "high" if risk_score >= 5 else "medium" if risk_score >= 3 else "low" if risk_score else "info"
     return {
         "number": pull_request.number,
         "title": pull_request.title,
         "state": pull_request.state,
         "evidence_url": pull_request.html_url,
+        "risk_score": risk_score,
+        "risk_level": risk_level,
+        "score_breakdown": score_breakdown,
         "facts": {
             "changed_files": file_count,
             "additions": additions,
