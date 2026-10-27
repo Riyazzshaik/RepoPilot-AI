@@ -1,0 +1,13 @@
+{
+  "name": "README",
+  "path": "README",
+  "sha": "abc123",
+  "size": 14,
+  "url": "https://api.github.com/repos/octocat/Hello-World/contents/README",
+  "html_url": "https://github.com/octocat/Hello-World/blob/master/README",
+  "git_url": "https://api.github.com/repos/octocat/Hello-World/git/blobs/abc123",
+  "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/master/README",
+  "type": "file",
+  "content": "IyBIZWxsbyBXb3JsZAo=\n",
+  "encoding": "base64"
+}

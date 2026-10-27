@@ -1,0 +1,30 @@
+{
+  "sha": "7fd1a60b01f91b314f59955a4e4d4e80d8edf11d",
+  "url": "https://api.github.com/repos/octocat/Hello-World/git/trees/master",
+  "truncated": false,
+  "tree": [
+    {
+      "path": "README",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "abc123",
+      "size": 14,
+      "url": "https://api.github.com/repos/octocat/Hello-World/git/blobs/abc123"
+    },
+    {
+      "path": "docs",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "def456",
+      "url": "https://api.github.com/repos/octocat/Hello-World/git/trees/def456"
+    },
+    {
+      "path": "docs/guide.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ghi789",
+      "size": 32,
+      "url": "https://api.github.com/repos/octocat/Hello-World/git/blobs/ghi789"
+    }
+  ]
+}
